@@ -2709,6 +2709,7 @@
 #endif
 
 #ifndef portYIELD_WITHIN_API
+    // PendSV中断触发任务上下文切换接口
     #define portYIELD_WITHIN_API    portYIELD
 #endif
 

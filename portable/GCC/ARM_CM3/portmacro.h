@@ -81,6 +81,7 @@ typedef unsigned long    UBaseType_t;
 #define portDONT_DISCARD      __attribute__( ( used ) )
 /*-----------------------------------------------------------*/
 
+// PendSV中断触发任务上下文切换接口
 /* Scheduler utilities. */
 #define portYIELD()                                     \
     {                                                   \

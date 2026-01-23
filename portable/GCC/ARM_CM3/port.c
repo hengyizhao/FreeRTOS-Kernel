@@ -458,26 +458,46 @@ void xPortPendSVHandler( void )
 
     __asm volatile
     (
+        // mrs: "Move to Register from Special register"（从特殊寄存器移动到通用寄存器）
+        // r0: 目标通用寄存器
+        // psp: "Process Stack Pointer"（进程栈指针）
+        // 作用: 将 PSP 的当前值读取到通用寄存器 R0 中，r0 中存储的是当前任务的栈指针
+        // psp中存储的栈顶指针是随着任务的执行，随着临时变量、函数返回值等入栈出栈实时变化的，而TCB_t结构体中的pxTopOfStack成员存储的栈顶指针只有在任务上下文切换时才会更新
         "   mrs r0, psp                         \n"
         "   isb                                 \n"
         "                                       \n"
+        // r3 = &pxCurrentTCB
         "   ldr r3, =pxCurrentTCB               \n" /* Get the location of the current TCB. */
-        "   ldr r2, [r3]                        \n"
+        "   ldr r2, [r3]                        \n" // r2 = pxCurrentTCB，因为pxCurrentTCB指针指向的TCB_t结构体的首个成员是pxTopOfStack栈顶指针，所以也可以用于表示任务栈的栈顶指针
         "                                       \n"
+        // stmdb: "Store Multiple Registers, Decrement Before"，将多个寄存器的值存储到内存中，并在存储之前先递减内存地址。
+        // 作用: 递减r0所指内存地址，并将 r4-r11 寄存器的值存储到r0所指内存地址，因为r0中存储的时psp中的地址，所以就是将r4~r11寄存器的值存储到任务栈中
+        // 其他自动保存的寄存器: r0, r1, r2, r3, r12, lr, pc, xpsr，在进入xPortPendSVHandler之前就已经自动入栈了
         "   stmdb r0!, {r4-r11}                 \n" /* Save the remaining registers. */
+        // 将更新后的任务栈顶指针更新到pxCurrentTCB->pxTopOfStack中
         "   str r0, [r2]                        \n" /* Save the new top of stack into the first member of the TCB. */
         "                                       \n"
+        // r3: 目标通用寄存器，保存的是pxCurrentTCB的地址，在执行bl vTaskSwitchContext时，有可能会使用r3寄存器，会改变其中的值，所以需要先保存起来
+        // r14: 目标通用寄存器，保存的是函数返回地址，在执行bl vTaskSwitchContext时，有可能会使用r14寄存器，会改变其中的值，所以需要先保存起来
+        // 保存到sp栈指针指向的内存地址，使用主栈（MSP）保存，不污染任务栈
         "   stmdb sp!, {r3, r14}                \n"
         "   mov r0, %0                          \n"
+        // ARM Cortex-M架构中，中断优先级的值越小，表示的优先级越高。
+        // 这里是提升中断屏蔽级别，屏蔽数值高于configMAX_SYSCALL_INTERRUPT_PRIORITY的中断，防止某些中断在任务切换期间打断任务切换
         "   msr basepri, r0                     \n"
+        // bl: "Branch with Link"（带链接的分支）
+        // 调用vTaskSwitchContext()函数，进行任务切换，主要动作是更新pxCurrentTCB为uxTopReadyPriority就绪状态链表中的下一个任务
         "   bl vTaskSwitchContext               \n"
         "   mov r0, #0                          \n"
-        "   msr basepri, r0                     \n"
+        "   msr basepri, r0                     \n" // vTaskSwitchContext()执行完毕清除中断屏蔽级别，恢复所有中断
         "   ldmia sp!, {r3, r14}                \n"
         "                                       \n" /* Restore the context, including the critical nesting count. */
+        // r3的数据恢复为pxCurrentTCB的地址，r1 = pxCurrentTCB
         "   ldr r1, [r3]                        \n"
+        // r0 = pxCurrentTCB->pxTopOfStack，即任务栈的栈顶指针
         "   ldr r0, [r1]                        \n" /* The first item in pxCurrentTCB is the task top of stack. */
         "   ldmia r0!, {r4-r11}                 \n" /* Pop the registers. */
+        // 将psp的值更新为切换后的任务栈的栈顶指针
         "   msr psp, r0                         \n"
         "   isb                                 \n"
         "   bx r14                              \n"
