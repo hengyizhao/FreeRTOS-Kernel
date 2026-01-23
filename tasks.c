@@ -373,6 +373,7 @@
  */
 typedef struct tskTaskControlBlock       /* The old naming convention is used to prevent breaking kernel aware debuggers. */
 {
+    // pxTopOfStack必须是第一个成员，这是因为在进行上下文切换的时候，需要知道栈顶的位置，pxCurrentTCB的地址，就是pxTopOfStack的地址，该地址中存储的就是栈顶的位置，就不需要写作pxCurrentTCB->pxTopOfStack了
     volatile StackType_t * pxTopOfStack; /**< Points to the location of the last item placed on the tasks stack.  THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
 
     #if ( portUSING_MPU_WRAPPERS == 1 )
@@ -499,22 +500,21 @@ PRIVILEGED_DATA static List_t xPendingReadyList;                         /**< Ta
 #endif
 
 /* Other file private variables. --------------------------------*/
-PRIVILEGED_DATA static volatile UBaseType_t uxCurrentNumberOfTasks = ( UBaseType_t ) 0U;
+PRIVILEGED_DATA static volatile UBaseType_t uxCurrentNumberOfTasks = ( UBaseType_t ) 0U; // 当前系统中创建的任务数量(包括所有状态)，用于跟踪系统负载
 PRIVILEGED_DATA static volatile TickType_t xTickCount = ( TickType_t ) configINITIAL_TICK_COUNT;
-PRIVILEGED_DATA static volatile UBaseType_t uxTopReadyPriority = tskIDLE_PRIORITY;
-PRIVILEGED_DATA static volatile BaseType_t xSchedulerRunning = pdFALSE;
-PRIVILEGED_DATA static volatile TickType_t xPendedTicks = ( TickType_t ) 0U;
-PRIVILEGED_DATA static volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE };
-PRIVILEGED_DATA static volatile BaseType_t xNumOfOverflows = ( BaseType_t ) 0;
-PRIVILEGED_DATA static UBaseType_t uxTaskNumber = ( UBaseType_t ) 0U;
-PRIVILEGED_DATA static volatile TickType_t xNextTaskUnblockTime = ( TickType_t ) 0U; /* Initialised to portMAX_DELAY before the scheduler starts. */
-PRIVILEGED_DATA static TaskHandle_t xIdleTaskHandles[ configNUMBER_OF_CORES ];       /**< Holds the handles of the idle tasks.  The idle tasks are created automatically when the scheduler is started. */
+PRIVILEGED_DATA static volatile UBaseType_t uxTopReadyPriority = tskIDLE_PRIORITY; // 当前处于就绪态（Ready）的所有任务中的最高优先级，位图形式的
+PRIVILEGED_DATA static volatile BaseType_t xSchedulerRunning = pdFALSE; // 调度器运行状态标志
+PRIVILEGED_DATA static volatile TickType_t xPendedTicks = ( TickType_t ) 0U; // 等待处理的tick计数（调度器挂起时累积）
+PRIVILEGED_DATA static volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE }; //每个核心的任务切换挂起标志，表示该核心是否有挂起的任务切换请求
+PRIVILEGED_DATA static volatile BaseType_t xNumOfOverflows = ( BaseType_t ) 0; // 定时器溢出计数，结合xTickCount可以计算出当前系统运行了多少个tick，xNumOfOverflows * BaseType_t_MAX + xTickCount
+PRIVILEGED_DATA static UBaseType_t uxTaskNumber = ( UBaseType_t ) 0U; // 任务号(线程号)，在宏定义configUSE_TRACE_FACILITY == 1时，TCB_t中的uxTaskNumber成员有效时，该变量才有实际意义
+PRIVILEGED_DATA static volatile TickType_t xNextTaskUnblockTime = ( TickType_t ) 0U; /* Initialised to portMAX_DELAY before the scheduler starts. */ // 下一个任务解除阻塞的时间点，只有当xTickCount到达此值时才检查阻塞任务
+PRIVILEGED_DATA static TaskHandle_t xIdleTaskHandles[ configNUMBER_OF_CORES ];       /**< Holds the handles of the idle tasks.  The idle tasks are created automatically when the scheduler is started. */ // 指向空闲任务的句柄，每个CPU核一个空闲任务
 
 /* Improve support for OpenOCD. The kernel tracks Ready tasks via priority lists.
  * For tracking the state of remote threads, OpenOCD uses uxTopUsedPriority
  * to determine the number of priority lists to read back from the remote target. */
-static const volatile UBaseType_t uxTopUsedPriority = configMAX_PRIORITIES - 1U;
-
+static const volatile UBaseType_t uxTopUsedPriority = configMAX_PRIORITIES - 1U; // 内核中暂未使用
 /* Context switches are held pending while the scheduler is suspended.  Also,
  * interrupts must not manipulate the xStateListItem of a TCB, or any of the
  * lists the xStateListItem can be referenced from, if the scheduler is suspended.
@@ -527,7 +527,7 @@ static const volatile UBaseType_t uxTopUsedPriority = configMAX_PRIORITIES - 1U;
  * Updates to uxSchedulerSuspended must be protected by both the task lock and the ISR lock
  * and must not be done from an ISR. Reads must be protected by either lock and may be done
  * from either an ISR or a task. */
-PRIVILEGED_DATA static volatile UBaseType_t uxSchedulerSuspended = ( UBaseType_t ) 0U;
+PRIVILEGED_DATA static volatile UBaseType_t uxSchedulerSuspended = ( UBaseType_t ) 0U; // 调度器挂起计数器，非0表示调度器被挂起，支持嵌套挂起，即支持多次suspend，只有所有的suspend都resume了，才清零
 
 #if ( configGENERATE_RUN_TIME_STATS == 1 )
 

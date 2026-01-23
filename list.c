@@ -102,6 +102,7 @@ void vListInitialiseItem( ListItem_t * const pxItem )
 }
 /*-----------------------------------------------------------*/
 
+// 这里的End是相对于pxList->pxIndex而言的，而不是相对于pxList->xListEnd而言的
 void vListInsertEnd( List_t * const pxList,
                      ListItem_t * const pxNewListItem )
 {
@@ -136,6 +137,7 @@ void vListInsertEnd( List_t * const pxList,
 }
 /*-----------------------------------------------------------*/
 
+// 根据pxNewListItem->xItemValue的大小，按升序将pxNewListItem插入到pxList中
 void vListInsert( List_t * const pxList,
                   ListItem_t * const pxNewListItem )
 {
@@ -222,6 +224,7 @@ UBaseType_t uxListRemove( ListItem_t * const pxItemToRemove )
 
     traceENTER_uxListRemove( pxItemToRemove );
 
+    // 在vListInitialise()中，pxListEnd的pxNext和pxPrevious都指向自己，所以这里不需要判断list中是否只有pxItemToRemove一个元素，其至少有pxListEnd这个元素
     pxItemToRemove->pxNext->pxPrevious = pxItemToRemove->pxPrevious;
     pxItemToRemove->pxPrevious->pxNext = pxItemToRemove->pxNext;
 
