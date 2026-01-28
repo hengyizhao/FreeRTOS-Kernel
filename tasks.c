@@ -483,7 +483,7 @@ PRIVILEGED_DATA static List_t xPendingReadyList;                         /**< Ta
 #if ( INCLUDE_vTaskDelete == 1 )
 
     PRIVILEGED_DATA static List_t xTasksWaitingTermination; /**< Tasks that have been deleted - but their memory not yet freed. */
-    PRIVILEGED_DATA static volatile UBaseType_t uxDeletedTasksWaitingCleanUp = ( UBaseType_t ) 0U;
+    PRIVILEGED_DATA static volatile UBaseType_t uxDeletedTasksWaitingCleanUp = ( UBaseType_t ) 0U; // 已被delete，等待内存释放的任务个数
 
 #endif
 
@@ -2326,7 +2326,7 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
                 }
                 #endif /* #if ( configNUMBER_OF_CORES > 1 ) */
             }
-            else
+            else // 如果调度器挂起或者被删除的任务当前未被调度
             {
                 --uxCurrentNumberOfTasks;
                 traceTASK_DELETE( pxTCB );
@@ -2341,6 +2341,11 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
         /* If the task is not deleting itself, call prvDeleteTCB from outside of
          * critical section. If a task deletes itself, prvDeleteTCB is called
          * from prvCheckTasksWaitingTermination which is called from Idle task. */
+        // 这里xDeleteTCBInIdleTask变量初始化的值是pdFALSE，只有在临界代码段条件语句中，在调度器Running且被删除的任务正在被调度时才会赋值pdTRUE
+        // 也就是说在调度器挂起或者被删除的任务当前未被调度时，才满足DeleteTCBInIdleTask != pdTRUE的条件
+        // 此时可以直接释放被删除任务的栈内存，否则要在Idle任务中去释放
+        // 这里之所以没有这这部分逻辑放入上述代码的else语句中，是因为这部分释放的栈内存是属于被删除任务自身，释放这部分内存，不会与其他任务发生竞争，不需要放到临界代码段
+        // 放到临界代码段之外执行，可以尽快恢复中断状态
         if( xDeleteTCBInIdleTask != pdTRUE )
         {
             prvDeleteTCB( pxTCB );
@@ -2355,7 +2360,7 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
                 if( pxTCB == pxCurrentTCB )
                 {
                     configASSERT( uxSchedulerSuspended == 0 );
-                    taskYIELD_WITHIN_API();
+                    taskYIELD_WITHIN_API(); // 只有在uxSchedulerSuspended不为0时，才允许执行任务切换，即在进行任务切换之前，需确保调度器未被挂起
                 }
                 else
                 {
@@ -2390,6 +2395,8 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
              * block. */
             const TickType_t xConstTickCount = xTickCount;
 
+            // 因为本任务该执行过vTaskSuspendAll()，执行了uxSchedulerSuspended + 1
+            // 如果uxSchedulerSuspended == 1，则说明只有本任务执行过vTaskSuspendAll()，不存在嵌套，没有其他任务执行vTaskSuspendAll()
             configASSERT( uxSchedulerSuspended == 1U );
 
             /* Generate the tick time at which the task wants to wake. */
@@ -2476,6 +2483,8 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
         {
             vTaskSuspendAll();
             {
+                // 因为本任务该执行过vTaskSuspendAll()，执行了uxSchedulerSuspended + 1
+                // 如果uxSchedulerSuspended == 1，则说明只有本任务执行过vTaskSuspendAll()，不存在嵌套，没有其他任务执行vTaskSuspendAll()
                 configASSERT( uxSchedulerSuspended == 1U );
 
                 traceTASK_DELAY();
