@@ -97,5 +97,13 @@ NVIC value of 255. */
 #define configCOM1_RX_BUFFER_LENGTH		128
 #define configCOM1_TX_BUFFER_LENGTH		128
 
+#define configASSERT( x )         \
+    if( ( x ) == 0 )              \
+    {                             \
+        taskDISABLE_INTERRUPTS(); \
+        for( ; ; )                \
+        ;                         \
+    }
+
 #endif /* FREERTOS_CONFIG_H */
 
