@@ -1316,6 +1316,8 @@ BaseType_t xQueueGenericSendFromISR( QueueHandle_t xQueue,
             {
                 /* Increment the lock count so the task that unlocks the queue
                  * knows that data was posted while it was locked. */
+                // 如果cTxLock不为queueUNLOCKED，即队列被锁定，ISR中可以向队列中写入数据，但是不能改变阻塞链表，所以通过cTxLock进行计数
+                // 后续在prvUnlockQueue中，唤醒被阻塞的任务，比如说因为队列为空，被阻塞等待Receive的任务
                 prvIncrementQueueTxLock( pxQueue, cTxLock );
             }
 
