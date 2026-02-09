@@ -3861,6 +3861,8 @@ void vTaskEndScheduler( void )
 }
 /*----------------------------------------------------------*/
 
+// 调用vTaskSuspendAll()之后，调度器挂起，不允许切换上下文
+// 如果有任务有切换执行的需求，将其添加进PendingReadyList链表，在调用xTaskResumeAll()调度器恢复之后，
 void vTaskSuspendAll( void )
 {
     traceENTER_vTaskSuspendAll();
@@ -4101,7 +4103,7 @@ BaseType_t xTaskResumeAll( void )
                         #endif /* #if ( configNUMBER_OF_CORES == 1 ) */
                     }
 
-                    if( pxTCB != NULL )
+                    if( pxTCB != NULL ) // 如果pcTCB不为空，表示在调度器挂起期间，有被阻塞的任务被唤醒需要调度，暂存在了PendingRadyList中，此时需要更新静态全局变量xNextTaskUnblockTime的值
                     {
                         /* A task was unblocked while the scheduler was suspended,
                          * which may have prevented the next unblock time from being
@@ -4128,7 +4130,7 @@ BaseType_t xTaskResumeAll( void )
                         {
                             do
                             {
-                                if( xTaskIncrementTick() != pdFALSE )
+                                if( xTaskIncrementTick() != pdFALSE ) // 调用xTaskIncrementTick，将调度器挂起期间的tick计数补充上来
                                 {
                                     /* Other cores are interrupted from
                                      * within xTaskIncrementTick(). */
@@ -4829,6 +4831,8 @@ BaseType_t xTaskIncrementTick( void )
                          * of the blocked list must be removed from the Blocked
                          * state -  so record the item value in
                          * xNextTaskUnblockTime. */
+                        // 因为DelayedTaskList是按照任务阻塞的TickCount的时间点顺序排序的，所以如果队列中当前的条目唤醒Tick大于当前系统Tick的话，后续的也一定大于
+                        // 那么就表示当前队列中的条目都还未到达唤醒阻塞的时间，可以直接跳出循环
                         xNextTaskUnblockTime = xItemValue;
                         break;
                     }
@@ -4837,6 +4841,7 @@ BaseType_t xTaskIncrementTick( void )
                         mtCOVERAGE_TEST_MARKER();
                     }
 
+                    // 执行到这里的，表示任务阻塞的Tick时间点已经到达，需要将其从DelayedTaskList链表中移除，并且还需要将其从相应的事件链表中移除，并将其添加进ReadyList链表
                     /* It is time to remove the item from the Blocked state. */
                     listREMOVE_ITEM( &( pxTCB->xStateListItem ) );
 
@@ -5478,6 +5483,8 @@ BaseType_t xTaskRemoveFromEventList( const List_t * const pxEventList )
     {
         /* The delayed and ready lists cannot be accessed, so hold this task
          * pending until the scheduler is resumed. */
+        // 调度器被挂起，如果是DelayedList链表中的任务被唤醒了，此时无法切换上下文，所以无法将该任务从DelayedList链表中移除，也无法将其添加进ReadyList链表
+        // 将其添加进xPendingReadyList链表，待调度器恢复后，再执行上述操作
         listINSERT_END( &( xPendingReadyList ), &( pxUnblockedTCB->xEventListItem ) );
     }
 
