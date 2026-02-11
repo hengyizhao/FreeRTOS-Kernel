@@ -415,7 +415,7 @@ typedef struct tskTaskControlBlock       /* The old naming convention is used to
 
     #if ( configUSE_MUTEXES == 1 )
         UBaseType_t uxBasePriority; /**< The priority last assigned to the task - used by the priority inheritance mechanism. */
-        UBaseType_t uxMutexesHeld;
+        UBaseType_t uxMutexesHeld; // task当前所持有的互斥锁的数量
     #endif
 
     #if ( configUSE_APPLICATION_TASK_TAG == 1 )
@@ -6703,6 +6703,9 @@ static void prvResetNextTaskUnblockTime( void )
             /* If the holder of the mutex has a priority below the priority of
              * the task attempting to obtain the mutex then it will temporarily
              * inherit the priority of the task attempting to obtain the mutex. */
+            // 互斥锁当前被任务pxMutexHolderTCB所持有，当前的任务pxCurrentTCB试图获取互斥锁，
+            // 如果持有互斥锁的任务其优先级小于当前试图获取互斥锁的任务的优先级，就有可能触发优先级反转问题
+            // 此时就需要优先级继承机制
             if( pxMutexHolderTCB->uxPriority < pxCurrentTCB->uxPriority )
             {
                 /* Adjust the mutex holder state to account for its new
@@ -6710,6 +6713,7 @@ static void prvResetNextTaskUnblockTime( void )
                  * not being used for anything else. */
                 if( ( listGET_LIST_ITEM_VALUE( &( pxMutexHolderTCB->xEventListItem ) ) & taskEVENT_LIST_ITEM_VALUE_IN_USE ) == ( ( TickType_t ) 0U ) )
                 {
+                    // 将持有互斥锁的任务的事件链表项中的优先级值继承高优先级
                     listSET_LIST_ITEM_VALUE( &( pxMutexHolderTCB->xEventListItem ), ( TickType_t ) configMAX_PRIORITIES - ( TickType_t ) pxCurrentTCB->uxPriority );
                 }
                 else
@@ -6719,6 +6723,9 @@ static void prvResetNextTaskUnblockTime( void )
 
                 /* If the task being modified is in the ready state it will need
                  * to be moved into a new list. */
+                // 优先级继承机制，分为以下几种情况：
+                // 1、任务在ReadyList链表中，需将其从原本的Ready优先级链表中移除，任务优先级替换为高优先级，并将任务添加进高优先级的Ready链表中
+                // 2、任务不在ReadyList链表中，仅将任务优先级替换为高优先级
                 if( listIS_CONTAINED_WITHIN( &( pxReadyTasksLists[ pxMutexHolderTCB->uxPriority ] ), &( pxMutexHolderTCB->xStateListItem ) ) != pdFALSE )
                 {
                     if( uxListRemove( &( pxMutexHolderTCB->xStateListItem ) ) == ( UBaseType_t ) 0 )
@@ -6769,6 +6776,9 @@ static void prvResetNextTaskUnblockTime( void )
                      * Therefore the mutex holder must have already inherited a
                      * priority, but inheritance would have occurred if that had
                      * not been the case. */
+                    // uxBasePriority是任务的真实优先级，如果pxMutexHolderTCB->uxPriority >= pxCurrentTCB->uxPriority
+                    // 但是pxMutexHolderTCB->uxBasePriority < pxCurrentTCB->uxPriority，那说明之前已经发生过优先级继承了
+                    // 这里不需要执行继承操作了
                     xReturn = pdTRUE;
                 }
                 else

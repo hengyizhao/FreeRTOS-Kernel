@@ -2412,6 +2412,9 @@ static BaseType_t prvCopyDataToQueue( Queue_t * const pxQueue,
             if( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX )
             {
                 /* The mutex is no longer being held. */
+                // send相对于互斥锁来说是释放锁，在释放锁的时候，需判断下任务优先级是否是继承的
+                // 如果继承的，需恢复为自身真实的优先级
+                // 释放之后，当前锁的没有持有者
                 xReturn = xTaskPriorityDisinherit( pxQueue->u.xSemaphore.xMutexHolder );
                 pxQueue->u.xSemaphore.xMutexHolder = NULL;
             }
